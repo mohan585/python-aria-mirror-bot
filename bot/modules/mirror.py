@@ -124,22 +124,22 @@ class MirrorListener(listeners.MirrorListeners):
                     def gplink(link):
                         gplink_url = "https://gplinks.in/api?api={api}&url={link}&alias={username}"
                         api_id = "89e771c8e00dbba8bb36cdbaf4ef2bdf8fc2800f"
-                        random_alias = get_random_string(30)
+                        random_alias = get_random_string(7)
                         r = requests.get(
                         gplink_url.format(
                         api=api_id,
-                        link=link,
+                        link=share_url,
                         username=random_alias
                         )
                         )
                         r2json = r.json()
                         if r2json["message"] == "['Alias already exists.']":
-                            gplink(link)
+                            surl
                         elif r2json["status"] == "success":
                             return r2json["shortenedUrl"]
                         else:
                             return link
-                    share_url = gplink(share_url)
+                    share_url = surl
                 msg += f'\n\n<b>Index:</b> {share_url}'
             if self.tag is not None:
                 msg += f'\ncc: @{self.tag}'
