@@ -1,6 +1,4 @@
 import requests
-import random
-import string
 from telegram.ext import CommandHandler, run_async
 
 from bot import Interval, INDEX_URL
@@ -8,7 +6,7 @@ from bot import dispatcher, DOWNLOAD_DIR, DOWNLOAD_STATUS_UPDATE_INTERVAL, downl
 from bot.helper.ext_utils import fs_utils, bot_utils
 from bot.helper.ext_utils.bot_utils import setInterval
 from bot.helper.ext_utils.exceptions import DirectDownloadLinkException
-from bot.helper.mirror_utils.download_utils import aria2_download
+from bot.helper.mirror_utils.download_utils.aria2_download import AriaDownloadHelper
 from bot.helper.mirror_utils.download_utils.direct_link_generator import direct_link_generator
 from bot.helper.mirror_utils.download_utils.telegram_downloader import TelegramDownloadHelper
 from bot.helper.mirror_utils.status_utils import listeners
@@ -21,12 +19,17 @@ from bot.helper.telegram_helper.message_utils import *
 from bot.helper.mirror_utils.download_utils.youtube_dl_download_helper import YoutubeDLHelper
 import pathlib
 import os
+import random
+import string
+
+ariaDlManager = AriaDownloadHelper()
+ariaDlManager.start_listener()
 
 
 class MirrorListener(listeners.MirrorListeners):
 
-    def init(self, bot, update, isTar=False, tag=None):
-        super().init(bot, update)
+    def __init__(self, bot, update, isTar=False, tag=None):
+        super().__init__(bot, update)
         self.isTar = isTar
         self.tag = tag
 
@@ -74,7 +77,8 @@ class MirrorListener(listeners.MirrorListeners):
             download_dict[self.uid] = upload_status
         update_all_messages()
         drive.upload(up_name)
-        def onDownloadError(self, error):
+
+    def onDownloadError(self, error):
         error = error.replace('<', ' ')
         error = error.replace('>', ' ')
         LOGGER.info(self.update.effective_chat.id)
@@ -84,7 +88,6 @@ class MirrorListener(listeners.MirrorListeners):
                 del download_dict[self.uid]
                 LOGGER.info(f"Deleting folder: {download.path()}")
                 fs_utils.clean_download(download.path())
-                LOGGER.info(f"Deleting {download.name()} from download_dict.")
                 LOGGER.info(str(download_dict))
             except Exception as e:
                 LOGGER.error(str(e))
@@ -109,11 +112,12 @@ class MirrorListener(listeners.MirrorListeners):
 
     def onUploadComplete(self, link: str):
         with download_dict_lock:
-            msg = f'<b>Filename:</b> <code>{download_dict[self.uid].name()}</code>\n\n<b>Size:</b> <i>{download_dict[self.uid].size()}</i>\n\n<b>Gdrive:</b> {link}'            
+            msg = f'<a href="{link}">{download_dict[self.uid].name()}</a> ({download_dict[self.uid].size()})'
             LOGGER.info(f'Done Uploading {download_dict[self.uid].name()}')
             if INDEX_URL is not None:
                 share_url = requests.utils.requote_uri(f'{INDEX_URL}/{download_dict[self.uid].name()}')
                 if os.path.isdir(f'{DOWNLOAD_DIR}/{self.uid}/{download_dict[self.uid].name()}'):
+                    
                     share_url += '/'
                     def get_random_string(length):
                         letters = string.ascii_lowercase
@@ -123,7 +127,7 @@ class MirrorListener(listeners.MirrorListeners):
                     def gplink(link):
                         gplink_url = "https://gplinks.in/api?api={api}&url={link}&alias={username}"
                         api_id = "89e771c8e00dbba8bb36cdbaf4ef2bdf8fc2800f"
-                        random_alias = get_random_string(7)
+                        random_alias = get_random_string(30)
                         r = requests.get(
                         gplink_url.format(
                         api=api_id,
@@ -139,7 +143,7 @@ class MirrorListener(listeners.MirrorListeners):
                         else:
                             return link
                     share_url = gplink(share_url)
-                msg += f'\n\n<b>Index:</b> {share_url}'
+                msg += f'\n\n <b>Index:</b> <a href= "{share_url}"> here<a/>'
             if self.tag is not None:
                 msg += f'\ncc: @{self.tag}'
             try:
@@ -168,7 +172,9 @@ class MirrorListener(listeners.MirrorListeners):
             self.clean()
         else:
             update_all_messages()
-            def _mirror(bot, update, isTar=False):
+
+
+def _mirror(bot, update, isTar=False):
     message_args = update.message.text.split(' ')
     try:
         link = message_args[1]
@@ -209,8 +215,7 @@ class MirrorListener(listeners.MirrorListeners):
     except DirectDownloadLinkException as e:
         LOGGER.info(f'{link}: {e}')
     listener = MirrorListener(bot, update, isTar, tag)
-    aria = aria2_download.AriaDownloadHelper(listener)
-    aria.add_download(link, f'{DOWNLOAD_DIR}/{listener.uid}/')
+    ariaDlManager.add_download(link, f'{DOWNLOAD_DIR}/{listener.uid}/',listener)
     sendStatusMessage(update, bot)
     if len(Interval) == 0:
         Interval.append(setInterval(DOWNLOAD_STATUS_UPDATE_INTERVAL, update_all_messages))
